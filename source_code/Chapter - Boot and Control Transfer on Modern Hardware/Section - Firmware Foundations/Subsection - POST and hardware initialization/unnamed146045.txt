@@ -1,0 +1,91 @@
+Assembler}
+,caption={Real-mode POST: UART init and 8259 PIC remap (NASM syntax)},label={lst:post_init}]
+; Minimal POST-stage routine, assumes running in 16-bit real mode.
+[org 0x7c00]                ; typical boot sector origin for standalone testing
+
+BITS 16
+
+start:
+    cli                     ; disable interrupts during init
+    xor ax,ax
+    mov ss,ax
+    mov sp,0x7c00           ; temporary stack in low memory
+
+; --- Initialize COM1 (16550) at 0x3F8 ---
+    mov dx,0x3F8            ; base port COM1
+    mov al,0x00
+    out dx,al               ; reset interrupts (IER=0)
+    mov dx,0x3FE            ; LCR is at base+3, but for DLAB set LCR first
+    mov al,0x80             ; set DLAB to access divisor
+    out 0x3FB,al            ; write to LCR (base+3)
+    mov dx,0x3F8
+    mov al,0x01             ; divisor low byte for 115200@1.8432MHz
+    out dx,al
+    mov dx,0x3F9
+    mov al,0x00             ; divisor high byte
+    out dx,al
+    mov dx,0x3FB
+    mov al,0x03             ; 8N1, clear DLAB
+    out dx,al
+    mov dx,0x3F8
+    mov al,0x0B             ; enable FIFO, clear, 14-byte threshold
+    out dx+2,al             ; FCR at base+2
+    mov dx,0x3FB
+    mov al,0x01             ; enable data ready interrupt if needed (IER)
+    out dx,al
+
+; Helper: write string to UART
+uart_write:
+    pusha
+.u_loop:
+    lodsb                   ; AL = [SI++]
+    cmp al,0
+    je .u_done
+.wait:
+    in  al,0x3FD            ; LSR at base+5
+    test al,0x20            ; Transmitter holding register empty
+    jz   .wait
+    mov dx,0x3F8
+    out dx,al               ; send char
+    jmp .u_loop
+.u_done:
+    popa
+    ret
+
+; Prepare message at data segment
+    mov si, msg
+    call uart_write
+
+; --- Remap 8259 PICs to IRQs 0x20..0x2F and mask ---
+    mov al,0x11             ; ICW1: start initialization
+    out 0x20,al             ; master PIC command
+    out 0xA0,al             ; slave PIC command
+
+    mov al,0x20             ; ICW2: master vector offset (0x20)
+    out 0x21,al
+    mov al,0x28             ; ICW2: slave vector offset (0x28)
+    out 0xA1,al
+
+    mov al,0x04             ; ICW3: tell master there is a slave at IRQ2
+    out 0x21,al
+    mov al,0x02             ; ICW3: slave identity (cascade identity)
+    out 0xA1,al
+
+    mov al,0x01             ; ICW4: 8086 mode
+    out 0x21,al
+    out 0xA1,al
+
+    mov al,0xFF             ; mask all IRQs initially
+    out 0x21,al
+    out 0xA1,al
+
+    sti                     ; interrupts can be enabled later when ready
+
+halt:
+    hlt
+    jmp halt
+
+msg db 'POST: UART initialized, PIC remapped',0
+
+times 510-($-$$) db 0
+dw 0xAA55
