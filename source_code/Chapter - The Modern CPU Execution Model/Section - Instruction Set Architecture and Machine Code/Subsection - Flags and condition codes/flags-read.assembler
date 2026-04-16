@@ -1,0 +1,8 @@
+; caller-saved: rax, rdx
+read_zf:
+    pushfq                 ; push full RFLAGS (opcode 0x9C)
+    pop    rdx             ; rdx := RFLAGS
+    and    rdx, 0x40       ; mask for $ZF$ (bit 6)
+    shr    rdx, 6          ; move bit 6 to bit 0
+    mov    al, dl          ; return result in AL (0 or 1)
+    ret
