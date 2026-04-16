@@ -1,0 +1,6 @@
+mov rax, 0xdeadbeefdeadbeef
+mov rbx, 0x0123456789abcdef
+mov rcx, 0x0000000000000000
+mov rdx, 0x0000000000000007
+mov rsp, 0x00007fffffffe000
+hlt
