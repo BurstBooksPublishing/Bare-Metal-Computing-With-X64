@@ -1,0 +1,34 @@
+,caption={x64 page-fault entry stub (NASM/Intel syntax)},label={lst:pf_entry}]
+BITS 64
+global page_fault_entry
+
+; Basic page fault entry: save volatile regs, pass rsp and CR2 to C handler.
+page_fault_entry:
+    push    rbp                     ; preserve frame pointer
+    push    rax                     ; save volatiles
+    push    rcx
+    push    rdx
+    push    rsi
+    push    rdi
+    push    r8
+    push    r9
+    push    r10
+    push    r11
+
+    mov     rdi, rsp                ; rdi = pointer to current stack (CPU-pushed frame + saved regs)
+    mov     rsi, cr2                ; rsi = faulting linear address (CR2)
+    call    page_fault_handler_c    ; C handler: void page_fault_handler_c(uint64_t* stack_ptr, uint64_t fault_addr);
+
+    ; If handler returns, restore registers and halt to avoid running from unknown state.
+    pop     r11
+    pop     r10
+    pop     r9
+    pop     r8
+    pop     rdi
+    pop     rsi
+    pop     rdx
+    pop     rcx
+    pop     rax
+    pop     rbp
+
+    hlt                             ; do not return to possibly inconsistent execution
