@@ -1,0 +1,15 @@
+; rdi = new PML4 physical base (page-aligned)
+; caller guarantees kernel text is mapped identically in both tables.
+; This routine performs the minimal operation to change CR3.
+global switch_pml4
+switch_pml4:
+    ; Ensure prior stores to new page tables are visible.
+    ; On coherent systems this is a no-op; otherwise insert cache write-back.
+    ; Serialize store visibility before changing CR3.
+    mfence                      ; serialize memory stores (lightweight, safe)
+    mov     rax, rdi            ; CR3 takes the physical base in rax
+    mov     cr3, rax            ; atomic switch: TLB non-global entries are invalidated
+    ; Optionally, if single-page invalidation is desired for modified user pages:
+    ; mov     rbx, user_vaddr
+    ; invlpg  [rbx]             ; invalidate single-page translation
+    ret
