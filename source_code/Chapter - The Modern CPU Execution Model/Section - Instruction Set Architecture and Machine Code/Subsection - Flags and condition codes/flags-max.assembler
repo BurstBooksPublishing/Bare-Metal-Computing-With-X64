@@ -1,0 +1,6 @@
+; uint64_t max(int64_t a, int64_t b) ; a in RDI, b in RSI
+max64:
+    mov    rax, rdi        ; rax := a
+    cmp    rax, rsi        ; sets flags as for rax - rsi
+    cmovl  rax, rsi        ; if (a < b) rax := b   ; cmovl: signed less (SF != OF)
+    ret
