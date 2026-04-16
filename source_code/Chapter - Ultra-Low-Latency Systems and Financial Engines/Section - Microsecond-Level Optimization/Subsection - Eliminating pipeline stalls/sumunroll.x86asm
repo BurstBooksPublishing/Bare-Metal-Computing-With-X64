@@ -1,0 +1,57 @@
+.globl naive_sum
+naive_sum:                      ; RDI = ptr, RSI = count (elements)
+    xor     rax, rax            ; accumulator = 0
+    test    rsi, rsi
+    jz      .naive_done
+.naive_loop:
+    mov     rdx, [rdi]          ; load element
+    add     rax, rdx            ; add -> RAW dependency on rax
+    add     rdi, 8
+    dec     rsi
+    jnz     .naive_loop
+.naive_done:
+    ret
+
+    .globl optimized_sum
+optimized_sum:                  ; RDI = ptr, RSI = count
+    xor     rax, rax            ; acc0
+    xor     r10, r10            ; acc1 (caller-saved)
+    xor     r11, r11            ; acc2 (caller-saved)
+    xor     r12, r12            ; acc3 (caller-saved)
+    test    rsi, rsi
+    jz      .opt_done
+
+    mov     rcx, rsi
+    shr     rcx, 2              ; loop count = count / 4
+    jz      .opt_remainder
+
+.opt_loop:
+    prefetcht0 [rdi + 256]      ; prefetch ahead (hint)
+    mov     rdx, [rdi]          ; load 0
+    mov     r8,  [rdi + 8]      ; load 1
+    mov     r9,  [rdi + 16]     ; load 2
+    mov     r13, [rdi + 24]     ; load 3
+    add     rax, rdx            ; independent add to acc0
+    add     r10, r8             ; acc1
+    add     r11, r9             ; acc2
+    add     r12, r13            ; acc3
+    add     rdi, 32             ; advance pointer by 4 * 8
+    dec     rcx
+    jnz     .opt_loop
+
+    ; reduce accumulators
+    add     rax, r10
+    add     rax, r11
+    add     rax, r12
+
+.opt_remainder:
+    and     rsi, 3
+    jz      .opt_done
+.opt_rem_loop:
+    mov     rdx, [rdi]
+    add     rax, rdx
+    add     rdi, 8
+    dec     rsi
+    jnz     .opt_rem_loop
+.opt_done:
+    ret
