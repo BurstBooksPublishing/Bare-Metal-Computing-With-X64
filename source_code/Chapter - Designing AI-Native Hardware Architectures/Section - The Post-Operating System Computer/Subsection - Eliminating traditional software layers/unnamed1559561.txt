@@ -1,0 +1,29 @@
+Assembler},caption={Minimal domain activation stub (x86-64, Intel syntax).},label={lst:domain_stub}]
+; setup_domain: activate an isolated execution domain
+; Input:
+;   rdi = physical address of new PML4 (aligned 4KiB)
+;   rsi = entry point virtual address inside new domain
+; Clobbers: rax, rcx, rdx, rbx
+global setup_domain
+setup_domain:
+    cli                             ; disable interrupts for atomic switch
+    mov     rax, rdi                ; new PML4 base (physical)
+    mov     cr3, rax                ; load new page table (switch address space)
+
+    ; Enable SMEP (bit 20) and SMAP (bit 21) in CR4
+    mov     rax, cr4
+    or      rax, (1 << 20) | (1 << 21)
+    mov     cr4, rax
+
+    ; Flush TLB for the domain's entry page
+    mov     rcx, rsi
+    invlpg  [rcx]                   ; invalidate TLB entry for target page
+
+    ; Optionally, set NX by ensuring page's PTE has NX bit (done by PTE setup)
+    ; Verified device mappings should be established by VT-d prior to this.
+
+    ; Final jump into domain (RIP-relative return ensures proper RIP semantics)
+    mov     rax, rsi
+    ; ensure canonical address and aligned entry
+    and     rax, 0x0000FFFFFFFFF000
+    jmp     rax                      ; transfer control to isolated domain
