@@ -1,0 +1,28 @@
+; 16-bit NASM-style routine.
+; Caller responsibilities:
+;  - Set DL = BIOS drive number (0x80 for first HDD).
+;  - Set ES:BX to buffer segment:offset for destination.
+;  - Fill the disk_dap fields: word [disk_dap+2] = sectors, dq [disk_dap+8] = starting LBA.
+;  - DS must point to the segment containing disk_dap.
+[BITS 16]
+read_lba_sectors:
+    pushf                   ; preserve flags
+    mov ah, 0x42            ; INT 13h extended read
+    mov si, disk_dap        ; DS:SI -> DAP
+    int 0x13
+    jc .error               ; carry set on error
+    popf
+    ret
+.error:
+    ; AH contains BIOS error code. Caller may inspect AH after return.
+    popf
+    ret
+
+section .data
+align 16
+disk_dap:
+    db 0x10, 0x00           ; size (0x10), reserved
+    dw 0x0001               ; number of sectors (set by caller)
+    dw 0x0000               ; buffer offset (ignored; use ES:BX)
+    dw 0x0000               ; buffer segment (ignored; use ES:BX)
+    dq 0x0000000000000000   ; starting LBA (set by caller)
