@@ -1,0 +1,65 @@
+; Assumes:
+; - Running in identity physical addressing mode (real flat addressing).
+; - ALLOC_PAGES points to a zeroed, 4KiB-aligned scratch area.
+; - NX handled later (long-mode control).
+SECTION .text
+global build_identity_pagetables
+build_identity_pagetables:
+    ; Inputs: RDI = physical address of scratch area (4KiB aligned)
+    ; Output: RAX = physical address of PML4 (for loading into CR3)
+    push rbp
+    mov rbp, rsp
+
+    mov rcx, 0                ; PDE index counter
+    mov rdx, 0                ; physical base to map (increments by 2MiB)
+
+    ; Layout in scratch:
+    ; [0] PML4 (4KiB)
+    ; [1] PDPT (4KiB)
+    ; [2] PD   (4KiB)
+    mov rax, rdi              ; rax = base scratch phys addr
+    mov rbx, rax              ; RBX = PML4 phys base
+    lea rsi, [rax + 4096]     ; RSI = PDPT phys base
+    lea rdi, [rax + 8192]     ; RDI = PD phys base
+
+    ; Zero tables (optional if caller zeroed)
+    mov rcx, 512              ; clear 4KiB (512 qwords)
+    xor r8, r8
+    mov r9, rbx
+.zero_loop:
+    mov [r9], r8
+    add r9, 8
+    loop .zero_loop
+
+    ; Set PML4[0] -> PDPT
+    ; entry = PDPT_phys | flags
+    mov r10, qword [rsp]      ; save stack alignment if needed (keep minimal)
+    ; flags: Present(1) | RW(2) = 0x3
+    mov r11, 0x3
+    mov r12, rsi              ; PDPT phys
+    or r12, r11
+    mov qword [rbx], r12
+
+    ; Set PDPT[0] -> PD
+    mov r13, rdi              ; PD phys
+    mov r14, 0x3
+    or r13, r14
+    mov qword [rsi], r13
+
+    ; Populate PD with 2MiB page entries for 1 GiB region (512 entries)
+    ; PDE flags: Present | RW | PS = 0x83
+    mov rcx, 512
+    mov r15, 0x83
+    xor rdx, rdx              ; rdx = physical base (0)
+.pd_loop:
+    ; entry = phys_base | flags
+    mov rax, rdx
+    or rax, r15
+    mov qword [rdi + rcx*8 - 8], rax   ; store backwards while looping
+    add rdx, 2097152          ; increment by 2MiB
+    loop .pd_loop
+
+    ; Return PML4 physical address in RAX
+    mov rax, rbx
+    pop rbp
+    ret
