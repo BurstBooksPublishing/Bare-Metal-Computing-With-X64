@@ -1,0 +1,69 @@
+asm,caption={emergency.S -- minimal emergency ISR (Intel-syntax NASM/GAS compatible)},label={lst:emergency_asm}]
+; emergency.S -- emergency interrupt handler
+; Assumptions:
+;   - IST index used to reach this handler provides a safe stack.
+;   - MOTOR_MMIO and WATCHDOG_MMIO are valid physical MMIO addresses.
+;   - APIC MSR is read to find LAPIC base; EOI offset is 0xB0.
+; Assembler: GAS Intel mode or NASM with small adjustments.
+
+    .section .text
+    .global emergency_isr
+emergency_isr:
+    ; preserve registers (minimal and deterministic)
+    push rax
+    push rcx
+    push rdx
+    push rbx
+    push rbp
+    push rsi
+    push rdi
+    push r8
+    push r9
+    push r10
+    push r11
+    push r12
+    push r13
+    push r14
+    push r15
+
+    ; Disable interrupts (best-effort; NMIs still arrive)
+    cli
+
+    ; --- actuator shutdown (MMIO write) ---
+    movabs rdi, 0xFFFF00000000    ; MOTOR_MMIO base (replace with real address)
+    mov dword [rdi], 0            ; write safe value to disable actuators
+
+    ; Trigger watchdog (optional)
+    movabs rsi, 0xFFFF0000F000    ; WATCHDOG_MMIO (replace with real address)
+    mov dword [rsi], 1            ; pet or signal safe state
+
+    ; --- acknowledge APIC if applicable ---
+    mov ecx, 0x1B                 ; IA32_APIC_BASE MSR
+    rdmsr                         ; edx:eax <- MSR
+    mov rbx, rdx
+    shl rbx, 32
+    or  rbx, rax                  ; rbx = APIC base
+    add rbx, 0xB0                 ; EOI offset
+    mov dword [rbx], 0           ; write to EOI
+
+    ; restore registers (we do not iret; remain guaranteed halted)
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop r11
+    pop r10
+    pop r9
+    pop r8
+    pop rdi
+    pop rsi
+    pop rbp
+    pop rbx
+    pop rdx
+    pop rcx
+    pop rax
+
+    ; Final safe halt loop: irrecoverable until external reset
+1:  cli
+    hlt
+    jmp 1b
