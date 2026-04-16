@@ -1,0 +1,73 @@
+global pid_update
+pid_update:
+    ; rdi = pid_state*, rsi = measured (int32 Q16.16), rdx = setpoint (int32 Q16.16)
+    mov     r9d, dword [rdi + 4]        ; r9d = prev_error
+    mov     eax, edx                    ; eax = setpoint
+    sub     eax, esi                    ; eax = error = setpoint - measured
+    mov     r11d, eax                   ; save error in r11d
+    mov     dword [rdi + 4], eax        ; update prev_error
+
+    ; proportional term: r12 = (Kp * error) >> 16
+    movsxd  rax, dword [rdi + 16]       ; rax = Kp
+    movsxd  rbx, r11d                   ; rbx = error
+    imul    rax, rbx                    ; rax = Kp * error
+    sar     rax, 16
+    mov     r12, rax
+
+    ; integral update: r13 = (Ki * error) >> 16 ; r14 = integral (int64)
+    movsxd  rax, dword [rdi + 20]       ; rax = Ki
+    movsxd  rbx, r11d                   ; rbx = error
+    imul    rax, rbx                    ; rax = Ki * error
+    sar     rax, 16
+    mov     r13, rax
+    mov     r14, [rdi + 8]              ; r14 = integral
+    add     r14, r13                    ; integral += Ki*error
+
+    ; clamp integral to [output_min, output_max]
+    movsxd  r15, dword [rdi + 28]       ; r15 = output_min
+    movsxd  rax, dword [rdi + 32]       ; rax  = output_max
+    cmp     r14, r15
+    jl      .int_clamp_min
+    cmp     r14, rax
+    jg      .int_clamp_max
+    jmp     .int_clamped
+.int_clamp_min:
+    mov     r14, r15
+    jmp     .int_clamped
+.int_clamp_max:
+    mov     r14, rax
+.int_clamped:
+    mov     [rdi + 8], r14              ; store integral
+
+    ; derivative term: r13 = (Kd * (error - prev_error)) >> 16
+    movsxd  rax, r11d                    ; rax = error
+    movsxd  rbx, r9d                     ; rbx = prev_error
+    sub     rax, rbx                     ; rax = derivative = error - prev_error
+    movsxd  rbx, dword [rdi + 24]        ; rbx = Kd
+    imul    rbx, rax                     ; rbx = Kd * derivative
+    sar     rbx, 16
+    mov     r13, rbx
+
+    ; sum: output = prop + integral + deriv
+    mov     rax, r12
+    add     rax, r14
+    add     rax, r13
+
+    ; clamp output to [output_min, output_max]
+    movsxd  rbx, dword [rdi + 28]        ; rbx = output_min
+    cmp     rax, rbx
+    jl      .out_clamp_min
+    movsxd  rbx, dword [rdi + 32]        ; rbx = output_max
+    cmp     rax, rbx
+    jg      .out_clamp_max
+    jmp     .out_ready
+.out_clamp_min:
+    mov     rax, rbx
+    jmp     .out_ready
+.out_clamp_max:
+    movsxd  rbx, dword [rdi + 32]
+    mov     rax, rbx
+.out_ready:
+    mov     rbx, [rdi + 36]              ; rbx = MMIO address
+    mov     dword [rbx], eax             ; write 32-bit Q16.16 output to MMIO
+    ret
