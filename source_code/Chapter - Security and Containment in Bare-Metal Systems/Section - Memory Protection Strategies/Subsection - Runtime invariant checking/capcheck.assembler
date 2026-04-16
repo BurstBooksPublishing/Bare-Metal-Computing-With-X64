@@ -1,0 +1,43 @@
+; check_capability: RDI = ptr, RSI = cap_ptr
+; Returns with flags preserved; on failure executes UD2.
+global check_capability
+section .text
+check_capability:
+    push rax                ; preserve volatile regs
+    push rcx
+    push rdx
+
+    mov rax, [rsi]          ; load cap.base
+    mov rcx, [rsi + 8]      ; load cap.len
+    mov edx, [rsi + 16]     ; load cap.perms (lower 32-bit)
+
+    mov rbx, rdi            ; copy ptr
+    sub rbx, rax            ; compute ptr - base (unsigned)
+    cmp rbx, rcx            ; compare with len
+    jae .fault              ; if ptr-base >= len -> fault
+
+    ; Example permission check: ensure write allowed when caller intends write.
+    ; Caller must set AL to 1 for write, 0 for read (convention for this example).
+    ; Here we read AL from stack (caller-specific contract); adapt per ABI.
+    ; For production, use a register or additional argument.
+    mov al, [rsp + 24]      ; read caller-supplied mode (bare-metal ABI dependent)
+    test edx, edx
+    ; Check write permission if AL==1 (simple branch)
+    cmp al, 1
+    jne .ok_perms
+    test edx, 2             ; check write bit
+    jz .fault
+
+.ok_perms:
+    pop rdx
+    pop rcx
+    pop rax
+    ret
+
+.fault:
+    ud2                    ; invalid opcode -> trap; minimal handler must reset/inspect
+    ; not reached, but keep stack balanced
+    pop rdx
+    pop rcx
+    pop rax
+    ret
