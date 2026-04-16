@@ -1,0 +1,39 @@
+; RDI = pointer to contiguous save-area (caller allocates)
+; Save general-purpose registers (offsets are multiples of 8)
+mov [rdi + 0x00], rax        ; save RAX
+mov [rdi + 0x08], rbx        ; save RBX
+mov [rdi + 0x10], rcx        ; save RCX
+mov [rdi + 0x18], rdx        ; save RDX
+mov [rdi + 0x20], rsi        ; save RSI
+mov [rdi + 0x28], rdi        ; save RDI (note: will overwrite pointer; caller must handle)
+mov [rdi + 0x30], rbp        ; save RBP
+mov [rdi + 0x38], rsp        ; save RSP
+mov [rdi + 0x40], r8         ; save R8
+mov [rdi + 0x48], r9         ; save R9
+mov [rdi + 0x50], r10        ; save R10
+mov [rdi + 0x58], r11        ; save R11
+mov [rdi + 0x60], r12        ; save R12
+mov [rdi + 0x68], r13        ; save R13
+mov [rdi + 0x70], r14        ; save R14
+mov [rdi + 0x78], r15        ; save R15
+
+; Save RFLAGS
+pushfq
+pop qword [rdi + 0x80]
+
+; Capture current RIP: call/pop idiom
+call 1f
+1:  pop rax
+    mov [rdi + 0x88], rax    ; save RIP
+
+; Save XMM0..XMM7 (128-bit each) using MOVDQU for unaligned safety
+movdqu xmmword [rdi + 0x90], xmm0
+movdqu xmmword [rdi + 0xA0], xmm1
+movdqu xmmword [rdi + 0xB0], xmm2
+movdqu xmmword [rdi + 0xC0], xmm3
+movdqu xmmword [rdi + 0xD0], xmm4
+movdqu xmmword [rdi + 0xE0], xmm5
+movdqu xmmword [rdi + 0xF0], xmm6
+movdqu xmmword [rdi + 0x100], xmm7
+
+ret
