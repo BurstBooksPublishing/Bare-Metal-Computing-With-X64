@@ -1,0 +1,48 @@
+; context_switch(old_tcb, new_tcb)
+; old_tcb in rdi, new_tcb in rsi
+; TCB: [0] = saved_rsp (8 bytes)
+global context_switch
+section .text
+context_switch:
+    ; Save a deterministic register image onto current stack.
+    push rax                 ; preserve caller-saved registers
+    push rcx
+    push rdx
+    push rbx                 ; callee-saved below, keep symmetric
+    push rbp
+    push rsi                 ; note: rsi holds new_tcb, saved for symmetry
+    push rdi                 ; rdi holds old_tcb, preserved for store
+    push r8
+    push r9
+    push r10
+    push r11
+    push r12
+    push r13
+    push r14
+    push r15
+
+    ; Save current stack pointer into old_tcb->saved_rsp
+    mov [rdi + 0], rsp
+
+    ; Load new task stack pointer from new_tcb->saved_rsp
+    mov rsp, [rsi + 0]
+
+    ; Restore the register image from the new stack (reverse pop order).
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop r11
+    pop r10
+    pop r9
+    pop r8
+    pop rdi
+    pop rsi
+    pop rbp
+    pop rbx
+    pop rdx
+    pop rcx
+    pop rax
+
+    ; Return into the new task's saved return address on its stack.
+    ret
