@@ -1,0 +1,47 @@
+Assembler,caption={Create and install minimal identity-mapped page tables for low 1 GiB using 2 MiB pages (assumes long mode).},label={lst:identity_pagetables}]
+; rdi = physical address of a 4KiB-aligned scratch page area with space for PML4, PDPT, PD
+; Layout: pml4 (1 qword), pdpt (1 qword), pd (512 qwords)
+; All addresses are physical; ensure memory identity is valid prior to execution.
+
+section .text
+global install_identity_1GiB
+install_identity_1GiB:
+    ; compute base pointers
+    mov rbx, rdi                ; base of tables
+    mov rax, rbx                ; pml4_phys = rax
+    add rbx, 8                  ; pdpt_phys = rbx
+    mov rcx, rbx
+    add rcx, 8                  ; pd_phys = rcx
+
+    ; clear PML4 and PDPT entries
+    mov qword [rax], 0
+    mov qword [rbx], 0
+
+    ; PD base in PDPT: present|rw = 0x3
+    lea rdx, [rcx]              ; rdx = PD physical address
+    or rdx, 0x3
+    mov qword [rbx], rdx
+
+    ; PDPT base in PML4: present|rw = 0x3
+    lea rdx, [rbx]
+    or rdx, 0x3
+    mov qword [rax], rdx
+
+    ; Fill PD with 512 entries of 2MiB pages mapping physical==virtual
+    xor rsi, rsi                ; index i = 0
+    mov rdx, 0x200000           ; page size = 2MiB
+.fill_pd:
+    ; compute p = i * 2MiB
+    mov r8, rsi
+    shl r8, 21                  ; r8 = i << 21
+    mov r9, r8                  ; r9 = physical base
+    or r9, 0x83                 ; present|rw|ps
+    mov qword [rcx + rsi*8], r9 ; PD[i] = physical|flags
+    inc rsi
+    cmp rsi, 512
+    jne .fill_pd
+
+    ; Install page tables: load CR3 with PML4 base
+    mov rax, rdi                ; rax = physical pml4 address
+    mov cr3, rax                ; load CR3; hardware flushes TLB on write
+    ret
