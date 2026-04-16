@@ -1,0 +1,14 @@
+global invlpgPage
+global flushTlbByReload
+
+; void invlpgPage(uint64_t vaddr) -- invalidate single page mapping
+invlpgPage:
+    ; rdi = virtual address
+    invlpg [rdi]        ; invalidate TLB entry for the linear address in rdi
+    ret
+
+; void flushTlbByReload(void) -- flush non-global TLB entries by reloading CR3
+flushTlbByReload:
+    mov rax, cr3        ; read current CR3 (may include PCID low bits)
+    mov cr3, rax        ; write back CR3 to invalidate non-global entries
+    ret
