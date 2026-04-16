@@ -1,0 +1,23 @@
+.intel_syntax noprefix
+.global flush_cache_range
+.type flush_cache_range,@function
+; Arguments: rdi = start address, rsi = length in bytes
+flush_cache_range:
+    test    rsi, rsi                # zero-length -> return
+    jz      .ret
+    mov     rax, rdi
+    mov     rcx, rsi
+    mov     rdx, 64                 # cache line size
+    and     rax, -64                # align down to CL boundary
+    lea     rbx, [rdi + rsi]        # end = start + length
+.loop:
+    cmp     rax, rbx
+    jge     .fence
+    .byte   0x0f,0xae,0x38          # clflushopt [rax] ; opcode bytes to avoid assembler needing features
+    add     rax, 64
+    jmp     .loop
+.fence:
+    sfence                          # ensure all CLFLUSHOPT completions are visible
+.ret:
+    ret
+.size flush_cache_range, .-flush_cache_range
