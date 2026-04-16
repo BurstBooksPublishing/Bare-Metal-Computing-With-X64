@@ -1,0 +1,41 @@
+Assembler}
+,caption={Minimal x86_64 page-fault handler using IST stack},label={lst:pf_handler}]
+; entry: CPU has switched to IST stack and pushed fault frame
+global pf_handler
+pf_handler:
+    cli                             ; clear IF to avoid re-entrancy
+    push rbp                        ; preserve frame pointer
+    push rax                        ; save a few volatile regs
+    push rdx
+    push rcx
+
+    mov rdi, cr2                    ; faulting linear address in RDI (for service)
+    ; CPU pushed error code just above RIP. Calculate its address on IST stack.
+    lea rsi, [rsp + 8*4]            ; point RSI to pushed RIP (adjust if more saved)
+    mov rbx, [rsi + 8]              ; load error code (8 bytes after RIP)
+    ; Inspect error code bits: PF: P (present), WR (write), US (user)
+    ; bit0 = present, bit1 = write, bit2 = user
+
+    ; Decide recoverability using a conservative policy
+    test rbx, 1
+    jnz .present_fault               ; if present bit set, escalate
+
+    ; Attempt on-demand mapping using pre-reserved page allocator
+    ; call map_page(rdi, flags) - must not fault; uses pre-mapped allocator
+    ; rdi already contains faulting address
+    call map_page_prealloc
+    test rax, rax
+    jz .restore_and_iret             ; success (rax==nonzero), return to faulting code
+
+.present_fault:
+    ; Cannot recover: record state and halt or transfer to diagnostic routine.
+    mov rdi, rdi
+    call dump_fault_state            ; non-faulting diagnostics routine
+
+.restore_and_iret:
+    pop rcx
+    pop rdx
+    pop rax
+    pop rbp
+    sti                             ; restore IF before iretq if appropriate
+    iretq                           ; resume interrupted execution
