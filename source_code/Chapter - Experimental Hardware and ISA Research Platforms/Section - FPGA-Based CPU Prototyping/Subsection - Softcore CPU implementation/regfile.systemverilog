@@ -1,0 +1,40 @@
+module regfile #(
+  parameter XLEN = 32
+) (
+  input  logic              clk,
+  input  logic              rst_n,
+  // read ports
+  input  logic  [4:0]       rs1_idx,
+  input  logic  [4:0]       rs2_idx,
+  output logic  [XLEN-1:0]  rs1_data,
+  output logic  [XLEN-1:0]  rs2_data,
+  // write port
+  input  logic              wr_en,
+  input  logic  [4:0]       rd_idx,
+  input  logic  [XLEN-1:0]  rd_data
+);
+  // 32 x XLEN register array (x0 is hardwired zero)
+  logic [XLEN-1:0] regs [31:1]; // x1..x31 in BRAM-friendly layout
+
+  // synchronous write (x0 ignored)
+  always_ff @(posedge clk) begin
+    if (!rst_n) begin
+      // optional: zero registers on reset for deterministic startup
+      integer i;
+      for (i=1;i<32;i=i+1) regs[i] <= '0;
+    end else if (wr_en && (rd_idx != 5'd0)) begin
+      regs[rd_idx] <= rd_data; // writeback stage writes here
+    end
+  end
+
+  // read with write-bypass for same-cycle writeback correctness
+  function automatic logic [XLEN-1:0] read_reg(input logic [4:0] idx);
+    if (idx == 5'd0) read_reg = '0;
+    else if (wr_en && (idx == rd_idx)) read_reg = rd_data; // bypass
+    else read_reg = regs[idx];
+  endfunction
+
+  assign rs1_data = read_reg(rs1_idx);
+  assign rs2_data = read_reg(rs2_idx);
+
+endmodule
