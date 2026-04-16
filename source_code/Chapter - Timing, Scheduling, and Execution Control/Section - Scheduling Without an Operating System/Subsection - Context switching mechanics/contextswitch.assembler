@@ -1,0 +1,64 @@
+global switch_context
+section .text
+; switch_context(rdi = old_tcb, rsi = new_tcb)
+switch_context:
+    ; Save general-purpose registers into old_tcb (rdi)
+    mov [rdi + OFF_RAX], rax
+    mov [rdi + OFF_RBX], rbx
+    mov [rdi + OFF_RCX], rcx
+    mov [rdi + OFF_RDX], rdx
+    mov [rdi + OFF_RSI], rsi        ; save rsi early (we'll overwrite rsi later)
+    mov [rdi + OFF_RDI], rdi
+    mov [rdi + OFF_RBP], rbp
+    mov [rdi + OFF_R8 ], r8
+    mov [rdi + OFF_R9 ], r9
+    mov [rdi + OFF_R10], r10
+    mov [rdi + OFF_R11], r11
+    mov [rdi + OFF_R12], r12
+    mov [rdi + OFF_R13], r13
+    mov [rdi + OFF_R14], r14
+    mov [rdi + OFF_R15], r15
+
+    ; Save RFLAGS
+    pushfq
+    pop qword [rdi + OFF_RFLAGS]
+
+    ; Save RIP via RIP-relative LEA
+    lea rax, [rel .save_rip_label]
+    mov [rdi + OFF_RIP], rax
+.save_rip_label:
+
+    ; Save RSP
+    mov [rdi + OFF_RSP], rsp
+
+    ; Optional: save segment registers or control registers here
+    ; mov qword [rdi + OFF_FSBASE], qword fs:0  ; platform dependent
+
+    ; Restore new context from new_tcb (rsi)
+    ; Load new RSP first so future stack ops use new stack
+    mov rsp, [rsi + OFF_RSP]
+
+    ; Restore GPRs (avoid clobbering rsi until done)
+    mov r15, [rsi + OFF_R15]
+    mov r14, [rsi + OFF_R14]
+    mov r13, [rsi + OFF_R13]
+    mov r12, [rsi + OFF_R12]
+    mov r11, [rsi + OFF_R11]
+    mov r10, [rsi + OFF_R10]
+    mov r9,  [rsi + OFF_R9 ]
+    mov r8,  [rsi + OFF_R8 ]
+    mov rbp, [rsi + OFF_RBP]
+    mov rdi, [rsi + OFF_RDI]
+    mov rsi, [rsi + OFF_RSI]        ; rsi can be overwritten now (we're done using its pointer)
+    mov rdx, [rsi + OFF_RDX]
+    mov rcx, [rsi + OFF_RCX]
+    mov rbx, [rsi + OFF_RBX]
+    mov rax, [rsi + OFF_RAX]
+
+    ; Restore RFLAGS
+    push qword [rsi + OFF_RFLAGS]
+    popfq
+
+    ; Jump to saved RIP of new task
+    mov rax, [rsi + OFF_RIP]
+    jmp rax
