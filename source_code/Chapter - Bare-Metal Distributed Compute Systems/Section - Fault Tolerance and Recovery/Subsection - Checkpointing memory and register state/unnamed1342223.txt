@@ -1,0 +1,61 @@
+Assembler}
+,caption={NASM x86-64: checkpoint_save (save GPRs, RIP, RFLAGS, FXSAVE, and memory block).},label={lst:checkpoint_save}]
+; checkpoint_save:
+; rdi = src_addr, rsi = length_bytes, rdx = dest_buf
+; writes: [rdx+0x00..] layout: GPRs (16*8), RIP, RFLAGS, FXSAVE(512), memory copy
+global checkpoint_save
+section .text
+checkpoint_save:
+    ; Save general-purpose registers into structured buffer
+    mov [rdx + 0x00], rax
+    mov [rdx + 0x08], rbx
+    mov [rdx + 0x10], rcx
+    mov [rdx + 0x18], rdx        ; save buffer pointer value
+    mov [rdx + 0x20], rsi
+    mov [rdx + 0x28], rdi
+    mov [rdx + 0x30], rbp
+    mov [rdx + 0x38], rsp
+    mov [rdx + 0x40], r8
+    mov [rdx + 0x48], r9
+    mov [rdx + 0x50], r10
+    mov [rdx + 0x58], r11
+    mov [rdx + 0x60], r12
+    mov [rdx + 0x68], r13
+    mov [rdx + 0x70], r14
+    mov [rdx + 0x78], r15
+
+    ; Save RIP using call/pop trick
+    call .Lgetrip
+.Lgetrip:
+    pop r8
+    mov [rdx + 0x80], r8        ; save RIP
+
+    ; Save RFLAGS
+    pushfq
+    pop qword [rdx + 0x88]
+
+    ; Save FPU/SSE state (FXSAVE requires 16-byte alignment)
+    lea r9, [rdx + 0x100]       ; FXSAVE region offset
+    fxsave [r9]
+
+    ; Copy memory region: dest = r9 + 0x200, src = rdi, len = rsi
+    lea r10, [r9 + 0x200]       ; computed memory snapshot destination
+    mov rax, rdi                ; src pointer
+    mov rbx, r10                ; dst pointer
+    mov rcx, rsi
+    ; copy 8-byte words
+    shr rcx, 3
+    rep movsq                   ; copies rcx*8 bytes
+    ; copy remaining bytes
+    mov rcx, rsi
+    and rcx, 7
+    rep movsb
+
+    ; Optionally compute simple checksum (xor) over snapshot region for quick verification
+    ; (Implementation left to caller to avoid extra state dependence)
+
+    ; Return total bytes written in rax: header(0x200)+fxsave(512)+rsi
+    mov rax, rsi
+    add rax, 0x200              ; header+fxsave overhead
+    add rax, 512
+    ret
