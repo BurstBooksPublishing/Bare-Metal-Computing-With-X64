@@ -1,0 +1,12 @@
+Assembler}
+,caption={Load 64-bit element via base+index*8+disp32},label={lst:ea-example}]
+
+
+; mov rax, qword ptr [rsi + rdx*8 + 16]  ; Intel syntax
+; Encoding: REX.W=0x48, opcode=0x8B, ModR/M=0xA4, SIB=0xD6, disp32=0x10
+    48 8B A4 D6 10 00 00 00  ; bytes: REX, MOV, ModR/M, SIB, disp32
+; runtime effect:
+;   EA = RSI + RDX*8 + 16
+;   linear = segment_base + EA (if segmentation active)
+;   physical = page_walk(linear)
+;   RAX := MEM64[physical]
